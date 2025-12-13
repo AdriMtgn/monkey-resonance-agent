@@ -15,5 +15,3 @@ COPY agent.py /app/pipelines/agent.py
 
 # Expose standard Pipelines port
 EXPOSE 9099
-
-CMD ["python", "-m", "pipelines", "--host", "0.0.0.0", "--port", "9099"]
