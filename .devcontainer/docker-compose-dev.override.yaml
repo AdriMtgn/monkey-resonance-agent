@@ -1,6 +1,10 @@
 services:
   mkr-agent:
-    expose:
+    image: none
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    ports:
       - 9099:9099
     volumes:
       - .:/app

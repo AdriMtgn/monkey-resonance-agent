@@ -1,10 +1,7 @@
 version: '3.8'
 services:
   mkr-agent:
-    image: ollama-mcp-agent:latest  # Local build, no registry needed
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/adrimtgn/mkr-agent:latest
     deploy:
       placement:
         constraints:
@@ -16,7 +13,7 @@ services:
         max_attempts: 3
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.chatui.rule=Host(`chatui.local`)"
+        - "traefik.http.routers.chatui.rule=Host(`mkr-agent.local`)"
         - "traefik.http.routers.chatui.entrypoints=web"
         - "traefik.docker.network=swarm-internal"
         - "traefik.http.services.chatui.loadbalancer.server.port=9099"     
