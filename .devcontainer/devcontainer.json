@@ -1,0 +1,27 @@
+{
+  "name": "Python Dev Environment",
+  "dockerComposeFile": [
+    "../swarm.yaml",
+    "docker-compose-dev.override.yaml"
+  ],
+  "remoteUser": "root",
+  "service": "mkr-agent",
+  "workspaceFolder": "/app",
+  "shutdownAction": "stopCompose",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "18" // specify node version here
+    }
+  },
+  "overrideCommand": true,
+  "postCreateCommand": "pip install ipykernel ipython ruff && python -m ipykernel install --user --name devcontainer-kernel --display-name 'Python (Dev Container)'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "charliermarsh.ruff"
+      ]
+    }
+  }
+}

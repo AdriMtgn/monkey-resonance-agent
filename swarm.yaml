@@ -1,31 +1,32 @@
 version: '3.8'
 services:
-  pipelines-mcp-agent:
+  mkr-agent:
     image: ollama-mcp-agent:latest  # Local build, no registry needed
     build:
       context: .
       dockerfile: Dockerfile
     deploy:
-      replicas: 2
+      placement:
+        constraints:
+          - "node.role == worker"
+      replicas: 1
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 1G
-    ports:
-      - "9099:9099"
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.chatui.rule=Host(`chatui.local`)"
+        - "traefik.http.routers.chatui.entrypoints=web"
+        - "traefik.docker.network=swarm-internal"
+        - "traefik.http.services.chatui.loadbalancer.server.port=9099"     
     environment:
       - MCP_URL=http://192.168.1.48:8000
       - OLLAMA_URL=http://ollama.local
       - MODEL=llama3.1
     networks:
-      - pipelines-net
+      - swarm-internal
 
 networks:
-  pipelines-net:
-    driver: overlay
-    attachable: true
+  swarm-internal:
+    external: true
