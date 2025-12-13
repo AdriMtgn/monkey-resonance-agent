@@ -19,7 +19,7 @@ jobs:
 
     env:
       REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository }} # org/repo
+      IMAGE_NAME: adrimtgn/mkr-agent
 
     steps:
       - name: Checkout repository
