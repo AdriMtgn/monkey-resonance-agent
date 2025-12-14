@@ -21,6 +21,7 @@ services:
       - MCP_URL=http://192.168.1.48:8000
       - OLLAMA_URL=http://ollama.local
       - MODEL=llama3.1
+      - PIPELINES_API_KEY=test-key
     networks:
       - swarm-internal
 
