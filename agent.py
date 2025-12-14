@@ -57,6 +57,27 @@ class Pipeline:
             | llm.bind_tools(tools)
         )
 
+        def _get_sound_card_state(self):
+            """Fetch current audio inputs/outputs and effects state from MCP resources"""
+            try:
+                # Access MCP resources for audio device monitoring
+                inputs_outputs_info = self.mcp_client.access_resource(
+                    server_name="monkey-resonance-mcp",
+                    uri="/list_inputs_outputs"
+                )
+                inputs_info = self.mcp_client.access_resource(
+                    server_name="monkey-resonance-mcp",
+                    uri="/list_inputs"
+                )
+                return {
+                    "inputs_outputs": inputs_outputs_info,
+                    "inputs": inputs_info
+                }
+            except Exception as e:
+                return {
+                    "error": f"Failed to get audio state: {str(e)}"
+                }
+    
     def _convert_messages(self, messages):
         history = []
         for msg in messages[:-1]:
@@ -79,5 +100,18 @@ class Pipeline:
             "input": user_input,
             "chat_history": chat_history
         })
+
+        # Handle effects queries
+        if "effects" in result.content.lower():
+            try:
+                # Extract input index from response (assuming format like "Input 2:")
+                input_index = int(result.content.split()[1][0])
+                effects_data = self.mcp_client.access_resource(
+                    server_name="monkey-resonance-mcp",
+                    uri=f"/list_effects/{input_index}"
+                )
+                yield f"\nEffect details for input {input_index}: {effects_data}"
+            except (IndexError, ValueError, Exception) as e:
+                yield f"\nError retrieving effects: {str(e)}"
 
         yield result.content
