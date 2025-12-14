@@ -2,9 +2,9 @@ from pydantic import BaseModel
 from typing import Any, Dict, Generator
 
 from langchain_ollama import ChatOllama
-from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
+
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 
@@ -21,7 +21,7 @@ class Pipeline:
         self.type = "pipe"
         self.valves = Valves()
 
-        # MCP Client
+        # MCP client
         self.mcp_client = MultiServerMCPClient({
             "monkey-resonance-mcp": {
                 "url": self.valves.MCP_URL,
@@ -29,45 +29,32 @@ class Pipeline:
             }
         })
 
-        # Ollama LLM
-        self.llm = ChatOllama(
+        tools = self.mcp_client.get_tools()
+
+        # LLM
+        llm = ChatOllama(
             model=self.valves.MODEL,
             base_url=self.valves.OLLAMA_URL,
-            temperature=self.valves.TEMPERATURE
+            temperature=self.valves.TEMPERATURE,
         )
 
-        # Tools + prompt
-        mcp_tools = self.mcp_client.get_tools()
-        tool_descriptions = "\n".join(
-            f"- {tool.name}: {tool.description}" for tool in mcp_tools
-        )
-
-        self.prompt = ChatPromptTemplate.from_messages([
+        # Prompt
+        prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                f"""You are an MCP agent connected to tools at {self.valves.MCP_URL}.
-
-Available tools:
-{tool_descriptions}
-
-Always use tools when external actions or data are required."""
+                "You are a specialized audio equipment manager agent. "
+                "You control sound cards, apply effects, manage volumes, and handle recordings. "
+                "Use the available tools to perform these tasks. "
+                "Respond in a musical and technical manner, using audio engineering terminology."
             ),
             MessagesPlaceholder("chat_history"),
-            ("user", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
+            ("user", "{input}")
         ])
 
-        self.agent = create_tool_calling_agent(
-            self.llm,
-            mcp_tools,
-            self.prompt
-        )
-
-        self.executor = AgentExecutor(
-            agent=self.agent,
-            tools=mcp_tools,
-            verbose=True,
-            handle_parsing_errors=True
+        # 🔑 LCEL tool binding
+        self.chain = (
+            prompt
+            | llm.bind_tools(tools)
         )
 
     def _convert_messages(self, messages):
@@ -88,12 +75,9 @@ Always use tools when external actions or data are required."""
         chat_history = self._convert_messages(messages)
         user_input = messages[-1]["content"]
 
-        try:
-            result = self.executor.invoke({
-                "input": user_input,
-                "chat_history": chat_history
-            })
-            yield result["output"]
+        result = self.chain.invoke({
+            "input": user_input,
+            "chat_history": chat_history
+        })
 
-        except Exception as e:
-            yield f"MCP Agent Error: {str(e)}"
+        yield result.content

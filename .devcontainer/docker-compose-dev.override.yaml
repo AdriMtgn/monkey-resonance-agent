@@ -2,13 +2,14 @@ services:
   mkr-agent:
     image: none
     build:
-      context: ../
+      context: .
       dockerfile: Dockerfile
     ports:
       - 9099:9099
     volumes:
       - .:/app
-    network_mode: host
-    networks: []
 
-
+networks:
+  swarm-internal:
+    external: false
+    driver: bridge
