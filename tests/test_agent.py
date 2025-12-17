@@ -6,7 +6,7 @@ import asyncio
 from agent import Pipeline
 
 
-async def test_agent():
+def test_agent():
     """Test that the agent initializes and runs correctly."""
     print("Testing cleaned agent...")
     
@@ -23,12 +23,20 @@ async def test_agent():
     
     try:
         # This should not fail with our cleaned version
-        async for chunk in pipeline.pipe(test_body):
-            print(f"Response: {chunk}")
+        # Run the async pipe method synchronously for testing
+        async def run_pipe():
+            chunks = []
+            async for chunk in pipeline.pipe(test_body):
+                chunks.append(chunk)
+            return chunks
+        
+        # Run in event loop
+        chunks = asyncio.run(run_pipe())
+        print(f"Response chunks: {chunks}")
         print("Agent test completed successfully")
     except Exception as e:
         print(f"Error during agent test: {e}")
         raise
 
 if __name__ == "__main__":
-    asyncio.run(test_agent())
+    test_agent()

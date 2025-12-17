@@ -13,10 +13,17 @@ services:
         max_attempts: 3
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.chatui.rule=Host(`mkr-agent.local`)"
-        - "traefik.http.routers.chatui.entrypoints=web"
+        - "traefik.http.routers.mkr-agent.rule=Host(`mkr-agent.local`)"
+        - "traefik.http.routers.mkr-agent.entrypoints=web"
         - "traefik.docker.network=swarm-internal"
-        - "traefik.http.services.chatui.loadbalancer.server.port=9099"     
+        - "traefik.http.services.mkr-agent.loadbalancer.server.port=9099"     
+        - "traefik.http.healthchecks=0"
+        - "traefik.http.routers.mkr-agent.middlewares=health@docker"
+      healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:9099/"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
     environment:
       - MCP_URL=http://192.168.1.48:8000
       - OLLAMA_URL=http://ollama.local

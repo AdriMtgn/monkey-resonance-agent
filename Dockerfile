@@ -15,3 +15,6 @@ COPY agent.py /app/pipelines/agent.py
 
 # Expose standard Pipelines port
 EXPOSE 9099
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    curl -f http://localhost:9099/ || exit 1
