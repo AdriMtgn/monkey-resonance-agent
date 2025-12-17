@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir \
     typing-extensions
 
 # Copy your pipeline script
-COPY agent.py /app/pipelines/agent.py
+COPY ./pipelines/ /app/pipelines/
 
 # Expose standard Pipelines port
 EXPOSE 9099
