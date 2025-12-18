@@ -211,5 +211,9 @@ class Pipeline:
             }
             for tool in tools
         ]
+    
+    def pipes(self):
+        return [{"id": "mkr-agent", "name": "🤖 MKR Agent"}]
+
 
 

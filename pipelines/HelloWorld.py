@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-class Pipe:
+class Pipeline:
     class Valves(BaseModel):
         pass  # Pas de config pour ce test
 
