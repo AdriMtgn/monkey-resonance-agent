@@ -24,9 +24,8 @@ class Pipeline:
         MODEL: str = "llama2:latest"
         TEMPERATURE: float = 0.1
 
-    type = "pipe"  # Class attribute for OpenWebUI
-
     def __init__(self):
+        self.id = "mkr-agent"
         self.name = "mkr-agent"
         self.valves = self.Valves()
 
@@ -70,6 +69,74 @@ class Pipeline:
         self.base_chain = self.prompt | self.llm
         logger.info("Base chain assembled: prompt -> LLM")
 
+def pipe(self, body: Dict[str, Any], **kwargs) -> Generator[Dict[str, Any], None, None]:
+    logger.info("Pipe method called")
+    logger.debug(f"Input body: {body}")
+
+    messages = body.get("messages", [])
+    if not messages:
+        logger.warning("No messages provided in body")
+        yield {"type": "text", "text": "No messages provided"}
+        return
+
+    logger.info(f"Processing {len(messages)} messages")
+    chat_history = self._convert_messages(messages)
+    user_input = messages[-1]["content"]
+    logger.info(f"User input: {user_input}")
+
+    # Get tools for this invocation and update self.tools
+    self.tools = self._get_tools()
+    logger.info(f"Loaded {len(self.tools)} tools for this invocation")
+
+    try:
+        # Create the full chain with tools
+        if self.tools:
+            logger.info("Binding tools to LLM")
+            chain = self.base_chain.bind_tools(self.tools)
+            logger.info(f"Chain now includes {len(self.tools)} tools")
+        else:
+            logger.warning("No tools available - using base chain without tools")
+            chain = self.base_chain
+
+        logger.info("Invoking LLM chain")
+        logger.debug(f"Chain input: {{'input': '{user_input}', 'chat_history': {chat_history}}}")
+
+        # Stream the response from the LLM
+        for chunk in chain.stream({
+            "input": user_input,
+            "chat_history": chat_history
+        }):
+            logger.debug(f"Stream chunk: {chunk}")
+            if chunk.content:
+                yield {"type": "text", "text": chunk.content}
+
+            # Handle effects queries in the stream
+            if "effects" in chunk.content.lower():
+                logger.info("Detected effects query in response")
+                try:
+                    # Extract input index from response (assuming format like "Input 2:")
+                    input_index = int(chunk.content.split()[1][0])
+                    logger.info(f"Extracting effects for input {input_index}")
+
+                    logger.info(f"Calling MCP resource: /list_effects/{input_index}")
+                    effects_data = self.mcp_client.access_resource(
+                        server_name="monkey-resonance-mcp",
+                        uri=f"/list_effects/{input_index}"
+                    )
+                    logger.info(f"Received effects data: {effects_data}")
+                    yield {"type": "text", "text": f"\nEffect details for input {input_index}: {effects_data}"}
+                except (IndexError, ValueError, Exception) as e:
+                    logger.error(f"Error retrieving effects: {str(e)}", exc_info=True)
+                    yield {"type": "text", "text": f"\nError retrieving effects: {str(e)}"}
+
+        logger.info("Pipe execution completed successfully")
+    except Exception as e:
+        logger.error(f"Error in pipe execution: {str(e)}", exc_info=True)
+        yield {"type": "text", "text": f"Error in pipe execution: {str(e)}"}
+    
+    def pipes(self):
+        return [{"id": "mkr-agent", "name": "MKR Agent"}]
+    
     def _get_tools(self):
         """Get tools from MCP client and convert to LangChain tools"""
         logger.info("Fetching tools from MCP client")
@@ -122,70 +189,6 @@ class Pipeline:
         logger.info(f"Converted {len(history)} messages to chat history")
         return history
 
-    async def pipe(self, body: Dict[str, Any]) -> Generator[Dict[str, Any], None, None]:
-        logger.info("Pipe method called")
-        logger.debug(f"Input body: {body}")
-
-        messages = body.get("messages", [])
-        if not messages:
-            logger.warning("No messages provided in body")
-            yield {"type": "text", "text": "No messages provided"}
-            return
-
-        logger.info(f"Processing {len(messages)} messages")
-        chat_history = self._convert_messages(messages)
-        user_input = messages[-1]["content"]
-        logger.info(f"User input: {user_input}")
-
-        # Get tools for this invocation and update self.tools
-        self.tools = self._get_tools()
-        logger.info(f"Loaded {len(self.tools)} tools for this invocation")
-
-        try:
-            # Create the full chain with tools
-            if self.tools:
-                logger.info("Binding tools to LLM")
-                chain = self.base_chain.bind_tools(self.tools)
-                logger.info(f"Chain now includes {len(self.tools)} tools")
-            else:
-                logger.warning("No tools available - using base chain without tools")
-                chain = self.base_chain
-
-            logger.info("Invoking LLM chain")
-            logger.debug(f"Chain input: {{'input': '{user_input}', 'chat_history': {chat_history}}}")
-
-            result = chain.invoke({
-                "input": user_input,
-                "chat_history": chat_history
-            })
-            
-            logger.info("LLM invocation completed")
-            logger.debug(f"LLM response: {result.content}")
-
-            # Handle effects queries
-            if "effects" in result.content.lower():
-                logger.info("Detected effects query in response")
-                try:
-                    # Extract input index from response (assuming format like "Input 2:")
-                    input_index = int(result.content.split()[1][0])
-                    logger.info(f"Extracting effects for input {input_index}")
-
-                    logger.info(f"Calling MCP resource: /list_effects/{input_index}")
-                    effects_data = self.mcp_client.access_resource(
-                        server_name="monkey-resonance-mcp",
-                        uri=f"/list_effects/{input_index}"
-                    )
-                    logger.info(f"Received effects data: {effects_data}")
-                    yield {"type": "text", "text": f"\nEffect details for input {input_index}: {effects_data}"}
-                except (IndexError, ValueError, Exception) as e:
-                    logger.error(f"Error retrieving effects: {str(e)}", exc_info=True)
-                    yield {"type": "text", "text": f"\nError retrieving effects: {str(e)}"}
-
-            yield {"type": "text", "text": result.content}
-            logger.info("Pipe execution completed successfully")
-        except Exception as e:
-            logger.error(f"Error in pipe execution: {str(e)}", exc_info=True)
-            yield {"type": "text", "text": f"Error in pipe execution: {str(e)}"}
 
     def get_model(self) -> Dict[str, Any]:
         """Return model information for OpenWebUI"""
@@ -212,8 +215,7 @@ class Pipeline:
             for tool in tools
         ]
     
-    def pipes(self):
-        return [{"id": "mkr-agent", "name": "🤖 MKR Agent"}]
+
 
 
 

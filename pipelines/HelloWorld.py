@@ -12,6 +12,6 @@ class Pipeline:
             {"id": "hello-world", "name": "Hello World Agent"}
         ]
 
-    def pipe(self, body: dict):
+    def pipe(self, body: dict, **kwargs):
         model = body.get("model", "unknown")
         return f"Bonjour depuis le Pipe ! Modèle sélectionné: {model} [web:9][web:20]"
