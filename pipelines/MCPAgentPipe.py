@@ -17,18 +17,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class Valves(BaseModel):
-    MCP_URL: str = "http://192.168.1.48:8000"
-    OLLAMA_URL: str = "http://test-chat_ollama:11434"
-    MODEL: str = "llama2:latest"
-    TEMPERATURE: float = 0.1
-
 class Pipeline:
+    class Valves(BaseModel):
+        MCP_URL: str = "http://192.168.1.48:8000"
+        OLLAMA_URL: str = "http://test-chat_ollama:11434"
+        MODEL: str = "llama2:latest"
+        TEMPERATURE: float = 0.1
+
     type = "pipe"  # Class attribute for OpenWebUI
 
     def __init__(self):
         self.name = "mkr-agent"
-        self.valves = Valves()
+        self.valves = self.Valves()
 
         logger.info(f"Initializing Pipeline with MCP_URL={self.valves.MCP_URL}, OLLAMA_URL={self.valves.OLLAMA_URL}")
 
