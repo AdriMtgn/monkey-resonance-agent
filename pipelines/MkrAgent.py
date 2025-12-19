@@ -147,87 +147,87 @@ class Pipeline:
             logger.error(f"Error in pipe execution: {str(e)}", exc_info=True)
             yield {"type": "text", "text": f"Error in pipe execution: {str(e)}"}
         
-        def pipes(self):
-            return [{"id": "mkr-agent", "name": "MKR Agent"}]
-        
-        def _get_tools(self):
-            """Get tools from MCP client and convert to LangChain tools"""
-            logger.info("Fetching tools from MCP client")
-            try:
-                mcp_tools = self.mcp_client.get_tools(
-                    server_name="monkey-resonance-mcp"
-                )
-                logger.info(f"Successfully retrieved {len(mcp_tools)} tools from MCP")
+    def pipes(self):
+        return [{"id": "mkr-agent", "name": "MKR Agent"}]
+    
+    def _get_tools(self):
+        """Get tools from MCP client and convert to LangChain tools"""
+        logger.info("Fetching tools from MCP client")
+        try:
+            mcp_tools = self.mcp_client.get_tools(
+                server_name="monkey-resonance-mcp"
+            )
+            logger.info(f"Successfully retrieved {len(mcp_tools)} tools from MCP")
 
-                # Convert MCP tools to LangChain tools
-                langchain_tools = []
-                for mcp_tool in mcp_tools:
-                    logger.info(f"Converting MCP tool: {mcp_tool.name}")
+            # Convert MCP tools to LangChain tools
+            langchain_tools = []
+            for mcp_tool in mcp_tools:
+                logger.info(f"Converting MCP tool: {mcp_tool.name}")
 
-                    # Create a LangChain tool wrapper
-                    @tool(mcp_tool.name, description=mcp_tool.description)
-                    def mcp_tool_wrapper(**kwargs):
-                        """Wrapper function that calls the MCP tool"""
-                        logger.info(f"Calling MCP tool {mcp_tool.name} with args: {kwargs}")
-                        try:
-                            result = self.mcp_client.call_tool(
-                                server_name="monkey-resonance-mcp",
-                                name=mcp_tool.name,
-                                arguments=kwargs
-                            )
-                            logger.info(f"MCP tool {mcp_tool.name} returned: {result}")
-                            return result
-                        except Exception as e:
-                            logger.error(f"Error calling MCP tool {mcp_tool.name}: {e}", exc_info=True)
-                            raise
+                # Create a LangChain tool wrapper
+                @tool(mcp_tool.name, description=mcp_tool.description)
+                def mcp_tool_wrapper(**kwargs):
+                    """Wrapper function that calls the MCP tool"""
+                    logger.info(f"Calling MCP tool {mcp_tool.name} with args: {kwargs}")
+                    try:
+                        result = self.mcp_client.call_tool(
+                            server_name="monkey-resonance-mcp",
+                            name=mcp_tool.name,
+                            arguments=kwargs
+                        )
+                        logger.info(f"MCP tool {mcp_tool.name} returned: {result}")
+                        return result
+                    except Exception as e:
+                        logger.error(f"Error calling MCP tool {mcp_tool.name}: {e}", exc_info=True)
+                        raise
 
-                    langchain_tools.append(mcp_tool_wrapper)
-                    logger.info(f"Created LangChain tool wrapper for {mcp_tool.name}")
+                langchain_tools.append(mcp_tool_wrapper)
+                logger.info(f"Created LangChain tool wrapper for {mcp_tool.name}")
 
-                return langchain_tools
-            except Exception as e:
-                logger.error(f"Error getting tools from MCP: {e}", exc_info=True)
-                return []
-        
-        def _convert_messages(self, messages):
-            logger.info(f"Converting {len(messages)} messages to LangChain format")
-            history = []
-            for i, msg in enumerate(messages[:-1]):
-                if msg["role"] == "user":
-                    history.append(HumanMessage(content=msg["content"]))
-                    logger.info(f"Converted message {i} to HumanMessage")
-                elif msg["role"] in ("assistant", "ai"):
-                    history.append(AIMessage(content=msg["content"]))
-                    logger.info(f"Converted message {i} to AIMessage")
-            logger.info(f"Converted {len(history)} messages to chat history")
-            return history
+            return langchain_tools
+        except Exception as e:
+            logger.error(f"Error getting tools from MCP: {e}", exc_info=True)
+            return []
+    
+    def _convert_messages(self, messages):
+        logger.info(f"Converting {len(messages)} messages to LangChain format")
+        history = []
+        for i, msg in enumerate(messages[:-1]):
+            if msg["role"] == "user":
+                history.append(HumanMessage(content=msg["content"]))
+                logger.info(f"Converted message {i} to HumanMessage")
+            elif msg["role"] in ("assistant", "ai"):
+                history.append(AIMessage(content=msg["content"]))
+                logger.info(f"Converted message {i} to AIMessage")
+        logger.info(f"Converted {len(history)} messages to chat history")
+        return history
 
 
-        def get_model(self) -> Dict[str, Any]:
-            """Return model information for OpenWebUI"""
-            logger.info("get_model called")
-            return {
-                "model": self.valves.MODEL,
-                "label": self.name,
-                "type": "pipe",
-                "description": "Audio equipment manager agent that controls sound cards, applies effects, manages volumes, and handles recordings."
+    def get_model(self) -> Dict[str, Any]:
+        """Return model information for OpenWebUI"""
+        logger.info("get_model called")
+        return {
+            "model": self.valves.MODEL,
+            "label": self.name,
+            "type": "pipe",
+            "description": "Audio equipment manager agent that controls sound cards, applies effects, manages volumes, and handles recordings."
+        }
+
+    def get_tools(self) -> List[Dict[str, Any]]:
+        """Return the tools available to this pipeline"""
+        logger.info("get_tools called")
+        # Get fresh tools for the response
+        tools = self._get_tools()
+        logger.info(f"Returning {len(tools)} tools")
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.args
             }
-
-        def get_tools(self) -> List[Dict[str, Any]]:
-            """Return the tools available to this pipeline"""
-            logger.info("get_tools called")
-            # Get fresh tools for the response
-            tools = self._get_tools()
-            logger.info(f"Returning {len(tools)} tools")
-            return [
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.args
-                }
-                for tool in tools
-            ]
-        
+            for tool in tools
+        ]
+    
 
 
 
