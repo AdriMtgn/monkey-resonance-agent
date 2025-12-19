@@ -1,3 +1,4 @@
+from typing import List, Union, Generator, Iterator
 from pydantic import BaseModel
 from typing import Any, Dict, Generator, List
 import asyncio
@@ -24,6 +25,18 @@ class Pipeline:
         MODEL: str = "llama2:latest"
         TEMPERATURE: float = 0.1
 
+
+    async def on_startup(self):
+        # This function is called when the server is started.
+        print(f"on_startup:{__name__}")
+        pass
+
+    async def on_shutdown(self):
+        # This function is called when the server is shutdown.
+        print(f"on_shutdown:{__name__}")
+        pass
+
+    
     def __init__(self):
         self.id = "mkr-agent"
         self.name = "mkr-agent"
@@ -69,7 +82,7 @@ class Pipeline:
         self.base_chain = self.prompt | self.llm
         logger.info("Base chain assembled: prompt -> LLM")
 
-def pipe(self, body: Dict[str, Any], **kwargs) -> Generator[Dict[str, Any], None, None]:
+def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
     logger.info("Pipe method called")
     logger.debug(f"Input body: {body}")
 
