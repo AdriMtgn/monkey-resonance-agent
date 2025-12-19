@@ -1,6 +1,5 @@
-from typing import List, Union, Generator, Iterator
+from typing import List, Union, Generator, Iterator, Dict, Any
 from pydantic import BaseModel
-from typing import Any, Dict, Generator, List
 import asyncio
 import logging
 
@@ -25,24 +24,18 @@ class Pipeline:
         MODEL: str = "llama2:latest"
         TEMPERATURE: float = 0.1
 
-
     async def on_startup(self):
-        # This function is called when the server is started.
-        print(f"on_startup:{__name__}")
-        pass
+        print(f"on_startup: {__name__}")
 
     async def on_shutdown(self):
-        # This function is called when the server is shutdown.
-        print(f"on_shutdown:{__name__}")
-        pass
+        print(f"on_shutdown: {__name__}")
 
-    
     def __init__(self):
         self.id = "mkr-agent"
         self.name = "mkr-agent"
         self.valves = self.Valves()
 
-        logger.info(f"Initializing Pipeline with MCP_URL={self.valves.MCP_URL}, OLLAMA_URL={self.valves.OLLAMA_URL}")
+        logger.info(f"Initializing MKR Agent with MCP_URL={self.valves.MCP_URL}")
 
         # MCP client
         self.mcp_client = MultiServerMCPClient({
@@ -59,7 +52,7 @@ class Pipeline:
             base_url=self.valves.OLLAMA_URL,
             temperature=self.valves.TEMPERATURE,
         )
-        logger.info(f"LLM initialized with model={self.valves.MODEL}, temperature={self.valves.TEMPERATURE}")
+        logger.info(f"LLM initialized: {self.valves.MODEL}")
 
         # Prompt
         self.prompt = ChatPromptTemplate.from_messages([
@@ -73,162 +66,133 @@ class Pipeline:
             MessagesPlaceholder("chat_history"),
             ("user", "{input}")
         ])
-        logger.info("Prompt template created")
-
-        # Initialize empty tools list - will be populated in pipe method
-        self.tools = []
-    
-        # Store the base chain without tools (tools will be added dynamically)
         self.base_chain = self.prompt | self.llm
-        logger.info("Base chain assembled: prompt -> LLM")
+        logger.info("Audio engineering agent with MCP tools ready")
 
-    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
+    async def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Generator:
+        """Main pipeline method - streams audio engineering responses WITH MCP tools"""
         logger.info("Pipe method called")
-        logger.debug(f"Input body: {body}")
-
+        
         messages = body.get("messages", [])
         if not messages:
-            logger.warning("No messages provided in body")
             yield {"type": "text", "text": "No messages provided"}
             return
 
         logger.info(f"Processing {len(messages)} messages")
         chat_history = self._convert_messages(messages)
         user_input = messages[-1]["content"]
-        logger.info(f"User input: {user_input}")
+        logger.info(f"User input: {user_input[:100]}...")
 
-        # Get tools for this invocation and update self.tools
-        self.tools = self._get_tools()
-        logger.info(f"Loaded {len(self.tools)} tools for this invocation")
+        # ✅ FIXED: Get tools ASYNC
+        try:
+            tools = await self._get_tools()
+            logger.info(f"Loaded {len(tools)} MCP tools")
+            
+            if tools:
+                chain = self.base_chain.bind_tools(tools)
+            else:
+                chain = self.base_chain
+                logger.warning("No MCP tools available")
+        except Exception as e:
+            logger.error(f"Tool loading failed: {e}")
+            chain = self.base_chain
+            tools = []
 
         try:
-            # Create the full chain with tools
-            if self.tools:
-                logger.info("Binding tools to LLM")
-                chain = self.base_chain.bind_tools(self.tools)
-                logger.info(f"Chain now includes {len(self.tools)} tools")
-            else:
-                logger.warning("No tools available - using base chain without tools")
-                chain = self.base_chain
-
-            logger.info("Invoking LLM chain")
-            logger.debug(f"Chain input: {{'input': '{user_input}', 'chat_history': {chat_history}}}")
-
-            # Stream the response from the LLM
+            # Stream response
             for chunk in chain.stream({
                 "input": user_input,
                 "chat_history": chat_history
             }):
-                logger.debug(f"Stream chunk: {chunk}")
-                if chunk.content:
+                if hasattr(chunk, 'content') and chunk.content:
                     yield {"type": "text", "text": chunk.content}
+                    
+                    # ✅ FIXED: Safe effects detection
+                    if "effects" in chunk.content.lower() and len(chunk.content.split()) > 1:
+                        try:
+                            words = chunk.content.split()
+                            input_index = int(words[1][0]) if words[1][0].isdigit() else 1
+                            logger.info(f"Fetching effects for input {input_index}")
+                            
+                            # ✅ Effects via MCP (non-async for simplicity)
+                            effects_data = self.mcp_client.access_resource(
+                                server_name="monkey-resonance-mcp",
+                                uri=f"/list_effects/{input_index}"
+                            )
+                            yield {"type": "text", "text": f"\n🎛️ Effects for input {input_index}: {effects_data}"}
+                        except Exception as e:
+                            logger.error(f"Effects error: {e}")
 
-                # Handle effects queries in the stream
-                if "effects" in chunk.content.lower():
-                    logger.info("Detected effects query in response")
-                    try:
-                        # Extract input index from response (assuming format like "Input 2:")
-                        input_index = int(chunk.content.split()[1][0])
-                        logger.info(f"Extracting effects for input {input_index}")
-
-                        logger.info(f"Calling MCP resource: /list_effects/{input_index}")
-                        effects_data = self.mcp_client.access_resource(
-                            server_name="monkey-resonance-mcp",
-                            uri=f"/list_effects/{input_index}"
-                        )
-                        logger.info(f"Received effects data: {effects_data}")
-                        yield {"type": "text", "text": f"\nEffect details for input {input_index}: {effects_data}"}
-                    except (IndexError, ValueError, Exception) as e:
-                        logger.error(f"Error retrieving effects: {str(e)}", exc_info=True)
-                        yield {"type": "text", "text": f"\nError retrieving effects: {str(e)}"}
-
-            logger.info("Pipe execution completed successfully")
+            logger.info("Pipe completed successfully")
         except Exception as e:
-            logger.error(f"Error in pipe execution: {str(e)}", exc_info=True)
-            yield {"type": "text", "text": f"Error in pipe execution: {str(e)}"}
-        
-    def pipes(self):
-        return [{"id": "mkr-agent", "name": "MKR Agent"}]
-    
-    def _get_tools(self):
-        """Get tools from MCP client and convert to LangChain tools"""
-        logger.info("Fetching tools from MCP client")
+            logger.error(f"Pipe error: {str(e)}", exc_info=True)
+            yield {"type": "text", "text": f"Audio system error: {str(e)}"}
+
+    @staticmethod
+    def pipes():
+        return [{"id": "mkr-agent", "name": "MKR Audio Agent 🎛️"}]
+
+    async def _get_tools(self) -> List:
+        """✅ FIXED: Async MCP tools"""
+        logger.info("Fetching MCP tools")
         try:
-            mcp_tools = self.mcp_client.get_tools(
+            # ✅ AWAIT the coroutine
+            mcp_tools = await self.mcp_client.get_tools(
                 server_name="monkey-resonance-mcp"
             )
-            logger.info(f"Successfully retrieved {len(mcp_tools)} tools from MCP")
+            logger.info(f"Retrieved {len(mcp_tools)} MCP tools")
 
-            # Convert MCP tools to LangChain tools
             langchain_tools = []
             for mcp_tool in mcp_tools:
-                logger.info(f"Converting MCP tool: {mcp_tool.name}")
-
-                # Create a LangChain tool wrapper
+                logger.info(f"Creating tool: {mcp_tool.name}")
+                
                 @tool(mcp_tool.name, description=mcp_tool.description)
-                def mcp_tool_wrapper(**kwargs):
-                    """Wrapper function that calls the MCP tool"""
-                    logger.info(f"Calling MCP tool {mcp_tool.name} with args: {kwargs}")
+                async def mcp_tool_wrapper(**kwargs):  # ✅ Async wrapper
+                    logger.info(f"Calling MCP tool {mcp_tool.name}: {kwargs}")
                     try:
-                        result = self.mcp_client.call_tool(
+                        # ✅ AWAIT tool call
+                        result = await self.mcp_client.call_tool(
                             server_name="monkey-resonance-mcp",
                             name=mcp_tool.name,
                             arguments=kwargs
                         )
-                        logger.info(f"MCP tool {mcp_tool.name} returned: {result}")
                         return result
                     except Exception as e:
-                        logger.error(f"Error calling MCP tool {mcp_tool.name}: {e}", exc_info=True)
+                        logger.error(f"MCP tool error: {e}")
                         raise
 
                 langchain_tools.append(mcp_tool_wrapper)
-                logger.info(f"Created LangChain tool wrapper for {mcp_tool.name}")
-
+            
             return langchain_tools
         except Exception as e:
-            logger.error(f"Error getting tools from MCP: {e}", exc_info=True)
+            logger.error(f"MCP tools failed: {e}")
             return []
-    
-    def _convert_messages(self, messages):
-        logger.info(f"Converting {len(messages)} messages to LangChain format")
+
+    def _convert_messages(self, messages: List[dict]) -> List:
         history = []
-        for i, msg in enumerate(messages[:-1]):
+        for msg in messages[:-1]:
             if msg["role"] == "user":
                 history.append(HumanMessage(content=msg["content"]))
-                logger.info(f"Converted message {i} to HumanMessage")
             elif msg["role"] in ("assistant", "ai"):
                 history.append(AIMessage(content=msg["content"]))
-                logger.info(f"Converted message {i} to AIMessage")
-        logger.info(f"Converted {len(history)} messages to chat history")
         return history
 
-
     def get_model(self) -> Dict[str, Any]:
-        """Return model information for OpenWebUI"""
-        logger.info("get_model called")
         return {
             "model": self.valves.MODEL,
             "label": self.name,
             "type": "pipe",
-            "description": "Audio equipment manager agent that controls sound cards, applies effects, manages volumes, and handles recordings."
+            "description": "🎛️ MCP-powered audio equipment manager with real-time sound card control"
         }
 
-    def get_tools(self) -> List[Dict[str, Any]]:
-        """Return the tools available to this pipeline"""
-        logger.info("get_tools called")
-        # Get fresh tools for the response
-        tools = self._get_tools()
-        logger.info(f"Returning {len(tools)} tools")
+    async def get_tools(self) -> List[Dict[str, Any]]:
+        """✅ ASYNC tools list for OpenWebUI"""
+        tools = await self._get_tools()
         return [
             {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.args
+                "name": getattr(tool, 'name', 'unknown'),
+                "description": getattr(tool, 'description', 'MCP tool'),
+                "parameters": getattr(tool, 'args', {})
             }
             for tool in tools
         ]
-    
-
-
-
-
