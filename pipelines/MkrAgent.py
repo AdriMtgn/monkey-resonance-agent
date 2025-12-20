@@ -1,6 +1,6 @@
-from typing import List, Union, Generator, Iterator, Dict, Any
+from typing import List, Union, Dict, Any
 from pydantic import BaseModel
-import asyncio
+
 import logging
 
 from langchain_ollama import ChatOllama
@@ -69,7 +69,7 @@ class Pipeline:
         self.base_chain = self.prompt | self.llm
         logger.info("Audio engineering agent with MCP tools ready")
 
-    async def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Generator:
+    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict):
         """Main pipeline method - streams audio engineering responses WITH MCP tools"""
         logger.info("Pipe method called")
         
@@ -85,7 +85,7 @@ class Pipeline:
 
         # ✅ FIXED: Get tools ASYNC
         try:
-            tools = await self._get_tools()
+            tools = self._get_tools()
             logger.info(f"Loaded {len(tools)} MCP tools")
             
             if tools:
