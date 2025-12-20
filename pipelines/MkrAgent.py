@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Union, Dict, Any
 from pydantic import BaseModel
 
@@ -21,7 +22,7 @@ class Pipeline:
     class Valves(BaseModel):
         MCP_URL: str = "http://192.168.1.48:8000"
         OLLAMA_URL: str = "http://test-chat_ollama:11434"
-        MODEL: str = "llama2:latest"
+        MODEL: str = "qwen3-coder:latest"
         TEMPERATURE: float = 0.1
 
     async def on_startup(self):
@@ -72,7 +73,7 @@ class Pipeline:
     def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict):
         """Main pipeline method - streams audio engineering responses WITH MCP tools"""
         logger.info("Pipe method called")
-        
+
         messages = body.get("messages", [])
         if not messages:
             yield {"type": "text", "text": "No messages provided"}
@@ -83,11 +84,15 @@ class Pipeline:
         user_input = messages[-1]["content"]
         logger.info(f"User input: {user_input[:100]}...")
 
-        # ✅ FIXED: Get tools ASYNC
+        # ✅ FIX: properly run async `_get_tools()` without making pipe async
         try:
-            tools = self._get_tools()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            tools = loop.run_until_complete(self._get_tools())
+            loop.close()
+
             logger.info(f"Loaded {len(tools)} MCP tools")
-            
+
             if tools:
                 chain = self.base_chain.bind_tools(tools)
             else:
@@ -106,15 +111,13 @@ class Pipeline:
             }):
                 if hasattr(chunk, 'content') and chunk.content:
                     yield {"type": "text", "text": chunk.content}
-                    
-                    # ✅ FIXED: Safe effects detection
+
                     if "effects" in chunk.content.lower() and len(chunk.content.split()) > 1:
                         try:
                             words = chunk.content.split()
                             input_index = int(words[1][0]) if words[1][0].isdigit() else 1
                             logger.info(f"Fetching effects for input {input_index}")
-                            
-                            # ✅ Effects via MCP (non-async for simplicity)
+
                             effects_data = self.mcp_client.access_resource(
                                 server_name="monkey-resonance-mcp",
                                 uri=f"/list_effects/{input_index}"
@@ -127,6 +130,7 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipe error: {str(e)}", exc_info=True)
             yield {"type": "text", "text": f"Audio system error: {str(e)}"}
+
 
     @staticmethod
     def pipes():

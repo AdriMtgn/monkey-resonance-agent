@@ -21,7 +21,7 @@ def get_weather(city: str) -> str:
 class Pipeline:
     class Valves(BaseModel):
         OLLAMA_URL: str = "http://test-chat_ollama:11434"
-        MODEL: str = "llama2:latest"
+        MODEL: str = "qwen3-coder:latest"
         TEMPERATURE: float = 0.1
 
     def __init__(self):
