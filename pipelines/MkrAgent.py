@@ -35,6 +35,8 @@ class Pipeline:
         self.id = "mkr-agent"
         self.name = "mkr-agent"
         self.valves = self.Valves()
+        self._cached_tools = None
+
 
         logger.info(f"Initializing MKR Agent with MCP_URL={self.valves.MCP_URL}")
 
@@ -86,10 +88,11 @@ class Pipeline:
 
         # ✅ FIX: properly run async `_get_tools()` without making pipe async
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            tools = loop.run_until_complete(self._get_tools())
-            loop.close()
+            try:
+                tools = asyncio.run(self._get_tools())
+            except RuntimeError:
+                # Event loop already running (OpenWebUI case)
+                tools = asyncio.get_event_loop().run_until_complete(self._get_tools())
 
             logger.info(f"Loaded {len(tools)} MCP tools")
 
@@ -137,40 +140,45 @@ class Pipeline:
         return [{"id": "mkr-agent", "name": "MKR Audio Agent 🎛️"}]
 
     async def _get_tools(self) -> List:
-        """✅ FIXED: Async MCP tools"""
+        if self._cached_tools is not None:
+            return self._cached_tools
+
         logger.info("Fetching MCP tools")
-        try:
-            # ✅ AWAIT the coroutine
-            mcp_tools = await self.mcp_client.get_tools(
-                server_name="monkey-resonance-mcp"
+
+        mcp_tools = await self.mcp_client.get_tools(
+            server_name="monkey-resonance-mcp"
+        )
+
+        self._cached_tools = [
+            self._make_tool(tool) for tool in mcp_tools
+        ]
+
+        logger.info(f"Cached {len(self._cached_tools)} MCP tools")
+        return self._cached_tools
+
+    def _make_tool(self, mcp_tool):
+        """
+        Create a LangChain tool bound to a specific MCP tool.
+        This avoids late-binding closure bugs.
+        """
+
+        @tool(
+            name=mcp_tool.name,
+            description=mcp_tool.description
+        )
+        async def mcp_tool_wrapper(**kwargs):
+            logger.info(
+                f"Calling MCP tool '{mcp_tool.name}' with args: {kwargs}"
             )
-            logger.info(f"Retrieved {len(mcp_tools)} MCP tools")
 
-            langchain_tools = []
-            for mcp_tool in mcp_tools:
-                logger.info(f"Creating tool: {mcp_tool.name}")
-                
-                @tool(mcp_tool.name, description=mcp_tool.description)
-                async def mcp_tool_wrapper(**kwargs):  # ✅ Async wrapper
-                    logger.info(f"Calling MCP tool {mcp_tool.name}: {kwargs}")
-                    try:
-                        # ✅ AWAIT tool call
-                        result = await self.mcp_client.call_tool(
-                            server_name="monkey-resonance-mcp",
-                            name=mcp_tool.name,
-                            arguments=kwargs
-                        )
-                        return result
-                    except Exception as e:
-                        logger.error(f"MCP tool error: {e}")
-                        raise
+            return await self.mcp_client.call_tool(
+                server_name="monkey-resonance-mcp",
+                name=mcp_tool.name,
+                arguments=kwargs
+            )
 
-                langchain_tools.append(mcp_tool_wrapper)
-            
-            return langchain_tools
-        except Exception as e:
-            logger.error(f"MCP tools failed: {e}")
-            return []
+        return mcp_tool_wrapper
+
 
     def _convert_messages(self, messages: List[dict]) -> List:
         history = []
