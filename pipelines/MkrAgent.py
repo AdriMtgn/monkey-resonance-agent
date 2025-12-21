@@ -27,6 +27,13 @@ class Pipeline:
 
     async def on_startup(self):
         print(f"on_startup: {__name__}")
+        logger.info("Starting MKR Agent pipeline")
+
+        logger.info("Initializing MCP client")
+        await self.mcp_client.initialize()
+
+        logger.info("MCP client initialized")
+        
 
     async def on_shutdown(self):
         print(f"on_shutdown: {__name__}")
